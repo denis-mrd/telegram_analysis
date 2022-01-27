@@ -1,0 +1,2 @@
+CREATE TABLE messages (id serial PRIMARY KEY, chat_id BIGINT, message_id BIGINT, date TIMESTAMP WITH TIME ZONE, sender_id BIGINT, text text);
+CREATE TABLE dialogs (id serial PRIMARY KEY, sender_id BIGINT, name text, title text);
