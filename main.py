@@ -1,9 +1,8 @@
 import logging
-import csv
 import yaml
+import psycopg2
 from datetime import date
 from telethon import TelegramClient, sync
-from telethon.hints import Entity
 
 # Начинаем вести журнал работы программы
 logging.basicConfig(filename="my.log", level=logging.DEBUG)
@@ -23,42 +22,50 @@ API_HASH = secrets['API_HASH']
 client = TelegramClient(str(date.today()), API_ID, API_HASH)
 client.start()
 
-# Создадим справочник контактов что бы каждый раз не посылать запрос на сервер
+# Подключаемся к базе
+conn = psycopg2.connect(dbname=secrets['DB_NAME'], user=secrets['DB_USER'], password=secrets['DB_PWD'], host=secrets['DB_HOST'])
+
+# Создадим справочник контактов
 dialogs = client.get_dialogs()
-contacts = {}
 for chat in dialogs:
-    if chat.is_user is True and chat.name != '' and chat.title != '':
-        contacts.update({chat.id:chat.name})
-        logging.debug(f'Получен чат № {chat.id} с {contacts[chat.id]}')
+    try:
+        with conn.cursor() as cursor:
+            if chat.is_user is True and chat.name != '' and chat.title != '':
+                query = f"INSERT INTO dialogs (sender_id, name, title) VALUES ({chat.id}, '{chat.name}', '{chat.title}');"
+                cursor.execute(query)
+                conn.commit()
+                logging.debug(f'Получен чат № {chat.id} с {chat.name}')
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
 
 # Метод что бы получить все текстовые сообщения чата
-def chat2file(username):
+def save_chat(chat_id):
     try:
-        with open(f'chat_with_{contacts[username]}.csv', mode="w", encoding='utf-8') as w_file:
-            file_writer = csv.writer(w_file, delimiter = ";", lineterminator="\r")
-            file_writer.writerow(['id', 'date', 'sender', 'text'])
-
-            messages = client.get_messages(username, None, reverse=True)
+        with conn.cursor() as cursor:
+            messages = client.get_messages(chat_id, None, reverse=True)
             counter = len(messages)
             logging.info(f'Чат содержит {counter} сообщений:')
             for sms in messages:
-                if sms.message != '' and sms.message is not None:
-                    file_writer.writerow([sms.id, sms.date.strftime("%d-%m-%Y %H:%M"), contacts[sms.sender_id], sms.text])
+                if sms.message != '' and sms.message is not None:  
+                    query = f"INSERT INTO messages (chat_id, message_id, date, sender_id, text) VALUES ({sms.chat_id}, {sms.id}, '{sms.date}', {sms.sender_id}, '{sms.text}');"
+                    cursor.execute(query)
+                    conn.commit()
                     logging.debug(counter)
                     counter -= 1
-                    logging.debug(f'Сообщение {sms.id} записно в файл chat_with_{username}.txt')
+                    logging.debug(f'Сообщение {sms.id} записно')
             logging.info(f'{counter} из {len(messages)} сообщений не текст')
-    except TypeError as e:
-        print(e)
-        pass
-
-
+            cursor.close()
+            conn.close()
+    except TypeError as error:
+        print(error)
+    except (Exception, psycopg2.DatabaseError) as error:
+        print(error)
 
 # В секретах храним список чатов для загрузки
 CHAT_IDs = secrets['CHAT_IDs']
 
 # Скачаем все эти чаты
 for chat in CHAT_IDs:
-    chat2file(chat)
+    save_chat(chat)
 
 print('Готово!')
