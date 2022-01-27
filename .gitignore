@@ -3,6 +3,7 @@
 *.session-journal
 *.log
 *.yaml
+*.csv
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
